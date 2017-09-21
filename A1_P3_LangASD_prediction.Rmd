@@ -13,47 +13,71 @@ demo_test = read.csv("demo_test.csv")
 lu_test = read.csv("LU_test.csv")
 token_test = read.csv("token_test.csv")
 #cleaning and aggregating data
-library(plyr, dplyr)
+library(pacman)
+p_load(modelr, lmerTest, stringr, merTools)
+p_load(merTools, plyr, dplyr)
+
 demo_test = plyr::rename(demo_test, c("Child.ID"="SUBJ", "Visit"="VISIT"))
-library(stringr)
+
 lu_test$VISIT = str_extract(lu_test$VISIT, "\\d")
 token_test$VISIT = str_extract(token_test$VISIT, "\\d")
 lu_test$SUBJ = gsub("\\.","",lu_test$SUBJ)
 token_test$SUBJ = gsub("\\.","",token_test$SUBJ)
 demo_test$SUBJ = gsub("\\.","",demo_test$SUBJ)
+
 demo_df = dplyr::select(demo_test, SUBJ, VISIT, Ethnicity,Diagnosis,Gender, Age, ADOS, MullenRaw, ExpressiveLangRaw)
 lu_df = dplyr::select(lu_test, SUBJ, VISIT, MOT_MLU, MOT_LUstd, CHI_MLU, CHI_LUstd)
 token_df = dplyr::select(token_test,SUBJ, VISIT, types_MOT, types_CHI, tokens_CHI, tokens_MOT)
-df = merge(demo_df,lu_df, all = T)
-df = merge(df, token_df, all = T)
+
+df = merge(demo_df,lu_df)
+df = merge(df, token_df)
+df_train = read.csv("df.csv")
+df_train = na.omit(df_train)
+
+new_df = subset(df[,c(1,7:9)], df$VISIT == "1")
+df = subset(df, select = -c(ADOS, MullenRaw, ExpressiveLangRaw))
+df = merge(df, new_df, all = T)
+anon = c(df$SUBJ)
+anon.factor = factor(anon)
+df$SUBJ = as.numeric(anon.factor)
+df$Gender= revalue(as.factor(df$Gender), c("2"="F", "1"="M"))
+df$Diagnosis = revalue(as.factor(df$Diagnosis), c("A"="ASD", "B"="TD"))
+
+df_test = df
+df_test = na.omit(df_test)
 ```
 
 ### Exercise 1) Testing model performance
 
-Compare the results on the training data () and on the test data. Report both of them. Discuss why they are different.
+```{r}
+# Compare the results on the training data () and on the test data. Report both of them. Discuss why they are different.
+# - recreate the models you chose last time (just write the code again and apply it to Assignment2TrainData1.csv)
+model = lmer(CHI_MLU ~ 1 + VISIT*ADOS + (1 + VISIT | SUBJ), df_train, REML = F)
+summary(model)
+rmse(model, df_train)
+# - test the performance of the models on the test data (Tips: time to reuse "predict())
+rmse(model, df_test)
+# - optional: predictions are never certain, can you identify the uncertainty of the predictions? (e.g. google predictinterval())
+predictInterval(model, df_test)
 
-- recreate the models you chose last time (just write the code again and apply it to Assignment2TrainData1.csv)
-- calculate performance of the model on the training data: root mean square error is a good measure. (Tip: google the functions rmse() and predict() )
-- create the test dataset (apply the code from assignment 1 part 1 to clean up the 3 test datasets)
-- test the performance of the models on the test data (Tips: time to reuse "predict()")
-- optional: predictions are never certain, can you identify the uncertainty of the predictions? (e.g. google predictinterval())
+```
 
 ### Exercise 2) Model Selection via Cross-validation (N.B: ChildMLU!)
+```{r}
+# - Create the basic model of ChildMLU as a function of Time and Diagnosis (don't forget the random effects!).
+model1 = lmer(CHI_MLU ~ VISIT + Diagnosis)
+# - Make a cross-validated version of the model. (Tips: google the function "createFolds";  loop through each fold, train a model on the other folds and test it on the fold)
 
-One way to reduce bad surprises when testing a model on new data is to train the model via cross-validation. 
+# - Report the results and comment on them.
 
-In this exercise you have to use cross-validation to calculate the predictive error of your models and use this predictive error to select the best possible model.
+# - Now try to find the best possible predictive model of ChildMLU, that is, the one that produces the best cross-validated results.
+ 
+# - Bonus Question 1: How would you go comparing the performance of the basic model and the cross-validated model on the testing set?
 
-- Create the basic model of ChildMLU as a function of Time and Diagnosis (don't forget the random effects!).
-- Make a cross-validated version of the model. (Tips: google the function "createFolds";  loop through each fold, train a model on the other folds and test it on the fold)
-- Report the results and comment on them.
+# - Bonus Question 2: What is the effect of changing the number of folds? Can you plot RMSE as a function of number of folds?
 
-- Now try to find the best possible predictive model of ChildMLU, that is, the one that produces the best cross-validated results.
-
-- Bonus Question 1: How would you go comparing the performance of the basic model and the cross-validated model on the testing set?
-- Bonus Question 2: What is the effect of changing the number of folds? Can you plot RMSE as a function of number of folds?
-- Bonus Question 3: compare the cross-validated predictive error against the actual predictive error on the test data
-
+# - Bonus Question 3: compare the cross-validated predictive error against the actual predictive error on the test data
+```
 ### Exercise 3) Assessing the single child
 
 Let's get to business. This new kiddo - Bernie - has entered your clinic. This child has to be assessed according to his group's average and his expected development.
