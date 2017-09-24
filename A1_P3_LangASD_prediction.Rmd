@@ -9,42 +9,13 @@ knitr::opts_chunk$set(echo = TRUE)
 #prelude
 getwd()
 setwd("C:/Users/Dana/Desktop/METHODS III/assignmentIpt.III")
-demo_test = read.csv("demo_test.csv")
-lu_test = read.csv("LU_test.csv")
-token_test = read.csv("token_test.csv")
-#cleaning and aggregating data
 library(pacman)
-p_load(modelr, lmerTest, stringr, merTools)
-p_load(merTools, plyr, dplyr)
+p_load(modelr, caret, dplyr)
 
-demo_test = plyr::rename(demo_test, c("Child.ID"="SUBJ", "Visit"="VISIT"))
-
-lu_test$VISIT = str_extract(lu_test$VISIT, "\\d")
-token_test$VISIT = str_extract(token_test$VISIT, "\\d")
-lu_test$SUBJ = gsub("\\.","",lu_test$SUBJ)
-token_test$SUBJ = gsub("\\.","",token_test$SUBJ)
-demo_test$SUBJ = gsub("\\.","",demo_test$SUBJ)
-
-demo_df = dplyr::select(demo_test, SUBJ, VISIT, Ethnicity,Diagnosis,Gender, Age, ADOS, MullenRaw, ExpressiveLangRaw)
-lu_df = dplyr::select(lu_test, SUBJ, VISIT, MOT_MLU, MOT_LUstd, CHI_MLU, CHI_LUstd)
-token_df = dplyr::select(token_test,SUBJ, VISIT, types_MOT, types_CHI, tokens_CHI, tokens_MOT)
-
-df = merge(demo_df,lu_df)
-df = merge(df, token_df)
-df_train = read.csv("df.csv")
-df_train = na.omit(df_train)
-
-new_df = subset(df[,c(1,7:9)], df$VISIT == "1")
-df = subset(df, select = -c(ADOS, MullenRaw, ExpressiveLangRaw))
-df = merge(df, new_df, all = T)
-anon = c(df$SUBJ)
-anon.factor = factor(anon)
-df$SUBJ = as.numeric(anon.factor)
-df$Gender= revalue(as.factor(df$Gender), c("2"="F", "1"="M"))
-df$Diagnosis = revalue(as.factor(df$Diagnosis), c("A"="ASD", "B"="TD"))
-
-df_test = df
-df_test = na.omit(df_test)
+##Currupt data, so we use kenneth
+ken_train= read.csv("df_train.csv")
+ken_test = read.csv("df_test.csv")
+ken_test = select(ken_test, VISIT, SUBJ, Ethnicity, Diagnosis, Age, ADOS, types_CHI, tokens_CHI, CHI_MLU, verbalIQ, nonVerbalIQ, types_MOT, MOT_MLU, tokens_MOT)
 ```
 
 ### Exercise 1) Testing model performance
@@ -52,22 +23,42 @@ df_test = na.omit(df_test)
 ```{r}
 # Compare the results on the training data () and on the test data. Report both of them. Discuss why they are different.
 # - recreate the models you chose last time (just write the code again and apply it to Assignment2TrainData1.csv)
-model = lmer(CHI_MLU ~ 1 + VISIT*ADOS + (1 + VISIT | SUBJ), df_train, REML = F)
+
+#making the model
+model = lmer(CHI_MLU ~ 1 + VISIT + verbalIQ + (1+VISIT | SUBJ), ken_train, REML = F)
+#let's see the results
 summary(model)
-rmse(model, df_train)
-# - test the performance of the models on the test data (Tips: time to reuse "predict())
-rmse(model, df_test)
+#alright, how good is this model?
+rmse(model, ken_train) #0.344
+
+# - test the performance of the models on the test data 
+rmse(model, ken_test)#0.349
+
 # - optional: predictions are never certain, can you identify the uncertainty of the predictions? (e.g. google predictinterval())
-predictInterval(model, df_test)
+predictInterval(model, ken_test)#not sure how to interpret this?
 
 ```
 
 ### Exercise 2) Model Selection via Cross-validation (N.B: ChildMLU!)
 ```{r}
 # - Create the basic model of ChildMLU as a function of Time and Diagnosis (don't forget the random effects!).
-model1 = lmer(CHI_MLU ~ VISIT + Diagnosis)
+#make a model
+model1 = lmer(CHI_MLU ~ VISIT + Diagnosis + (1+VISIT|SUBJ), ken_train, REML = F)
+
 # - Make a cross-validated version of the model. (Tips: google the function "createFolds";  loop through each fold, train a model on the other folds and test it on the fold)
 
+#make folds
+folds <- createFolds(ken_train, k = 4, list = TRUE, returnTrain = FALSE)
+names(folds)= c("1","2","3","4")
+print(folds$"1")
+#Error: number of observations (=7) <= number of random effects (=8) for term (VISIT | SUBJ); the random-effects parameters and the residual variance (or scale parameter) are probably unidentifiable
+t = ken_train[folds$"1",]
+model2 = lmer(CHI_MLU ~ VISIT + Diagnosis + (1+VISIT|SUBJ), ken_train[folds$"1",], REML = F)
+
+for(i in 1:4){
+  model2 = lmer(CHI_MLU ~ VISIT + Diagnosis + (1+VISIT|SUBJ), ken_train[folds$i,])
+}
+    
 # - Report the results and comment on them.
 
 # - Now try to find the best possible predictive model of ChildMLU, that is, the one that produces the best cross-validated results.
@@ -80,19 +71,20 @@ model1 = lmer(CHI_MLU ~ VISIT + Diagnosis)
 ```
 ### Exercise 3) Assessing the single child
 
-Let's get to business. This new kiddo - Bernie - has entered your clinic. This child has to be assessed according to his group's average and his expected development.
+```{r}
+# 
+# Bernie is one of the six kids in the test dataset, so make sure to extract that child alone for the following analysis.
 
-Bernie is one of the six kids in the test dataset, so make sure to extract that child alone for the following analysis.
+#make subset for bernie-boy
+bernie = subset(ken_test, SUBJ == 2)
+# You want to evaluate:
+# 
+# - how does the child fare in ChildMLU compared to the average TD child at each visit? ***Define the distance in terms of absolute difference between this Child and the average TD***. - WHAT DOES THIS MEAN?
+# (Tip: recreate the equation of the model: Y=Intercept+BetaX1+BetaX2, etc; ***input the average of the TD group  for each parameter in the model as X1, X2, etc.).*** - WHAT DOES THIS MEAN??
+# 
+# - how does the child fare compared to the model predictions at Visit 6? Is the child below or above expectations? (tip: use the predict() function on Bernie's data only and compare the prediction with the actual performance of the child)
 
-You want to evaluate:
-
-- how does the child fare in ChildMLU compared to the average TD child at each visit? Define the distance in terms of absolute difference between this Child and the average TD.
-(Tip: recreate the equation of the model: Y=Intercept+BetaX1+BetaX2, etc; input the average of the TD group  for each parameter in the model as X1, X2, etc.).
-
-- how does the child fare compared to the model predictions at Visit 6? Is the child below or above expectations? (tip: use the predict() function on Bernie's data only and compare the prediction with the actual performance of the child)
-
-[HERE GOES YOUR ANSWER]
-
+```
 ### OPTIONAL: Exercise 4) Model Selection via Information Criteria
 Another way to reduce the bad surprises when testing a model on new data is to pay close attention to the relative information criteria between the models you are comparing. Let's learn how to do that!
 
