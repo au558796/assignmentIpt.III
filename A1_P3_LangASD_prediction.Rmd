@@ -10,11 +10,13 @@ knitr::opts_chunk$set(echo = TRUE)
 getwd()
 setwd("C:/Users/Dana/Desktop/METHODS III/assignmentIpt.III")
 library(pacman)
-p_load(modelr, caret, dplyr)
+p_load(modelr, lmerTest, Metrics, lme4, merTools, ggplot2, hydroGOF, gstat, dplyr, stringr, plyr, caret)
+
+
 
 ##Currupt data, so we use kenneth
 ken_train= read.csv("df_train.csv")
-ken_test = read.csv("df_test.csv")
+ken_test = read.csv("df_test_good.csv")
 ken_test = select(ken_test, VISIT, SUBJ, Ethnicity, Diagnosis, Age, ADOS, types_CHI, tokens_CHI, CHI_MLU, verbalIQ, nonVerbalIQ, types_MOT, MOT_MLU, tokens_MOT)
 ```
 
@@ -29,10 +31,10 @@ model = lmer(CHI_MLU ~ 1 + VISIT + verbalIQ + (1+VISIT | SUBJ), ken_train, REML 
 #let's see the results
 summary(model)
 #alright, how good is this model?
-rmse(model, ken_train) #0.344
+modelr::rmse(model, ken_train) #0.344
 
 # - test the performance of the models on the test data 
-rmse(model, ken_test)#0.349
+modelr::rmse(model, ken_test)#0.349
 
 # - optional: predictions are never certain, can you identify the uncertainty of the predictions? (e.g. google predictinterval())
 predictInterval(model, ken_test)#not sure how to interpret this?
@@ -46,18 +48,22 @@ predictInterval(model, ken_test)#not sure how to interpret this?
 model1 = lmer(CHI_MLU ~ VISIT + Diagnosis + (1+VISIT|SUBJ), ken_train, REML = F)
 
 # - Make a cross-validated version of the model. (Tips: google the function "createFolds";  loop through each fold, train a model on the other folds and test it on the fold)
-
-#make folds
-folds <- createFolds(ken_train, k = 4, list = TRUE, returnTrain = FALSE)
-names(folds)= c("1","2","3","4")
-print(folds$"1")
-#Error: number of observations (=7) <= number of random effects (=8) for term (VISIT | SUBJ); the random-effects parameters and the residual variance (or scale parameter) are probably unidentifiable
-t = ken_train[folds$"1",]
-model2 = lmer(CHI_MLU ~ VISIT + Diagnosis + (1+VISIT|SUBJ), ken_train[folds$"1",], REML = F)
-
+folds <- cut(seq(1,nrow(ken_train)),breaks=4,labels=FALSE)
+#Perform 10 fold cross validation
+train_error = NULL
+test_error = NULL
 for(i in 1:4){
-  model2 = lmer(CHI_MLU ~ VISIT + Diagnosis + (1+VISIT|SUBJ), ken_train[folds$i,])
-}
+    #Segement your data by fold using the which() function 
+    testIndexes <- which(folds==i,arr.ind=TRUE)
+    testData <- ken_train[testIndexes, ]
+    trainData <- ken_train[-testIndexes, ]
+    model1 = lmer(CHI_MLU ~ VISIT + Diagnosis + (1+VISIT|SUBJ), trainData, REML = F)
+    train_error[i] = modelr::rmse(model1, trainData)
+    testData$prediction <- predict(model1, testData, allow.new.levels = TRUE)
+    test_error[i] = Metrics::rmse(testData$CHI_MLU, testData$prediction)
+    }
+
+#Error: number of observations (=7) <= number of random effects (=8) for term (VISIT | SUBJ); the random-effects parameters and the residual variance (or scale parameter) are probably unidentifiable
     
 # - Report the results and comment on them.
 
@@ -74,12 +80,12 @@ for(i in 1:4){
 ```{r}
 # 
 # Bernie is one of the six kids in the test dataset, so make sure to extract that child alone for the following analysis.
-
 #make subset for bernie-boy
 bernie = subset(ken_test, SUBJ == 2)
 # You want to evaluate:
 # 
 # - how does the child fare in ChildMLU compared to the average TD child at each visit? ***Define the distance in terms of absolute difference between this Child and the average TD***. - WHAT DOES THIS MEAN?
+
 # (Tip: recreate the equation of the model: Y=Intercept+BetaX1+BetaX2, etc; ***input the average of the TD group  for each parameter in the model as X1, X2, etc.).*** - WHAT DOES THIS MEAN??
 # 
 # - how does the child fare compared to the model predictions at Visit 6? Is the child below or above expectations? (tip: use the predict() function on Bernie's data only and compare the prediction with the actual performance of the child)
