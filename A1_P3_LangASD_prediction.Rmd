@@ -5,14 +5,12 @@ date: "August 10, 2017"
 output: html_document
 ---
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
 #prelude
+knitr::opts_chunk$set(echo = TRUE)
 getwd()
 setwd("C:/Users/Dana/Desktop/METHODS III/assignmentIpt.III")
 library(pacman)
 p_load(modelr, lmerTest, Metrics, lme4, merTools, ggplot2, hydroGOF, gstat, dplyr, stringr, plyr, caret)
-
-
 
 ##Currupt data, so we use kenneth
 ken_train= read.csv("df_train.csv")
@@ -48,27 +46,53 @@ predictInterval(model, ken_test)#not sure how to interpret this?
 model1 = lmer(CHI_MLU ~ VISIT + Diagnosis + (1+VISIT|SUBJ), ken_train, REML = F)
 
 # - Make a cross-validated version of the model. (Tips: google the function "createFolds";  loop through each fold, train a model on the other folds and test it on the fold)
+
+#make folds
 folds <- cut(seq(1,nrow(ken_train)),breaks=4,labels=FALSE)
-#Perform 10 fold cross validation
+#Perform 4 fold cross validation
+train_error = NULL
+test_error = NULL
+for(i in 1:4){#i is numbers 1 through 4 inclusive
+    #Segement data by fold using the which() function 
+    testIndexes <- which(folds==i,arr.ind=TRUE)#folds
+    testData <- ken_train[testIndexes, ]#save the testing folds in variable
+    trainData <- ken_train[-testIndexes, ]#save train folds in variable 
+    model1 = lmer(CHI_MLU ~ VISIT + Diagnosis + (1+VISIT|SUBJ), trainData, REML = F)#nice model m8
+    train_error[i] = modelr::rmse(model1, trainData)#take a look at the training error (not bad, not bad)
+    testData$prediction <- predict(model1, testData, allow.new.levels = TRUE)#and now, predict!
+    test_error[i] = Metrics::rmse(testData$CHI_MLU, testData$prediction)#here we see how well the prediction model did on child mlu (not that great, *sad trumpet*)
+    #just for curiosity, you can look at estimates to see how they change
+    est1 = fixef(model1)[1]
+    }
+
+### - Now try to find the best possible predictive model of ChildMLU, that is, the one that produces the best cross-validated results.
+ 
+#alright, imma just remake the loop and trial and error the models
+folds <- cut(seq(1,nrow(ken_train)),breaks=4,labels=FALSE)
 train_error = NULL
 test_error = NULL
 for(i in 1:4){
-    #Segement your data by fold using the which() function 
-    testIndexes <- which(folds==i,arr.ind=TRUE)
-    testData <- ken_train[testIndexes, ]
-    trainData <- ken_train[-testIndexes, ]
-    model1 = lmer(CHI_MLU ~ VISIT + Diagnosis + (1+VISIT|SUBJ), trainData, REML = F)
-    train_error[i] = modelr::rmse(model1, trainData)
-    testData$prediction <- predict(model1, testData, allow.new.levels = TRUE)
+    testIndexes <- which(folds==i,arr.ind=TRUE)#folds
+    testData <- ken_train[testIndexes, ]#save the testing folds in variable
+    trainData <- ken_train[-testIndexes, ]#save train folds in variable 
+    model2 = lmer(CHI_MLU ~ 1 + VISIT + verbalIQ + (1+VISIT | SUBJ), trainData, REML = F)
+    train_error[i] = modelr::rmse(model2, trainData)
+    testData$prediction <- predict(model2, testData, allow.new.levels = TRUE)
     test_error[i] = Metrics::rmse(testData$CHI_MLU, testData$prediction)
-    }
-
-#Error: number of observations (=7) <= number of random effects (=8) for term (VISIT | SUBJ); the random-effects parameters and the residual variance (or scale parameter) are probably unidentifiable
     
-# - Report the results and comment on them.
+}
+print(train_error)
+print(test_error)
 
-# - Now try to find the best possible predictive model of ChildMLU, that is, the one that produces the best cross-validated results.
- 
+# #model2 = lmer(CHI_MLU ~ 1 + VISIT + verbalIQ + (1+VISIT | SUBJ), ken_train, REML = F)
+# > print(train_error)
+# [1] 0.3447835 0.3566611 0.3550076 0.3429060
+# > print(test_error)
+# [1] 0.3647887 0.3287494 0.3340756 0.3700598
+#ooooo fuck not bad eh?
+#
+
+
 # - Bonus Question 1: How would you go comparing the performance of the basic model and the cross-validated model on the testing set?
 
 # - Bonus Question 2: What is the effect of changing the number of folds? Can you plot RMSE as a function of number of folds?
@@ -84,7 +108,17 @@ for(i in 1:4){
 bernie = subset(ken_test, SUBJ == 2)
 # You want to evaluate:
 # 
-# - how does the child fare in ChildMLU compared to the average TD child at each visit? ***Define the distance in terms of absolute difference between this Child and the average TD***. - WHAT DOES THIS MEAN?
+# - how does the child fare in ChildMLU compared to the average TD child at each visit? Define the distance in terms of absolute difference between this Child and the average TD.
+
+#group for only td kids
+td_group = subset(ken_train, Diagnosis == "TD")
+#model that shit
+model3 = lmer(CHI_MLU ~ VISIT + (1+VISIT|SUBJ), td_group, REML = F)
+#here comes bernie-boy
+bern_model = lm(CHI_MLU ~ VISIT, bernie)
+#summarize output
+summary(model3)
+summary(bern_model)
 
 # (Tip: recreate the equation of the model: Y=Intercept+BetaX1+BetaX2, etc; ***input the average of the TD group  for each parameter in the model as X1, X2, etc.).*** - WHAT DOES THIS MEAN??
 # 
@@ -93,12 +127,13 @@ bernie = subset(ken_test, SUBJ == 2)
 ```
 ### OPTIONAL: Exercise 4) Model Selection via Information Criteria
 Another way to reduce the bad surprises when testing a model on new data is to pay close attention to the relative information criteria between the models you are comparing. Let's learn how to do that!
-
-Re-create a selection of possible models explaining ChildMLU (the ones you tested for exercise 2, but now trained on the full dataset and not cross-validated).
-
-Then try to find the best possible predictive model of ChildMLU, that is, the one that produces the lowest information criterion.
-
-- Bonus question for the optional exercise: are information criteria correlated with cross-validated RMSE? That is, if you take AIC for Model 1, Model 2 and Model 3, do they co-vary with their cross-validated RMSE?
+```{r}
+# Re-create a selection of possible models explaining ChildMLU (the ones you tested for exercise 2, but now trained on the full dataset and not cross-validated).
+ 
+# Then try to find the best possible predictive model of ChildMLU, that is, the one that produces the lowest information criterion.
+ 
+# - Bonus question for the optional exercise: are information criteria correlated with cross-validated RMSE? That is, if you take AIC for Model 1, Model 2 and Model 3, do they co-vary with their cross-validated RMSE?
+```
 
 ### OPTIONAL: Exercise 5): Using Lasso for model selection
 Welcome to the last secret exercise. If you have already solved the previous exercises, and still there's not enough for you, you can expand your expertise by learning about penalizations. Check out this tutorial: http://machinelearningmastery.com/penalized-regression-in-r/ and make sure to google what penalization is, with a focus on L1 and L2-norms. Then try them on your data!
