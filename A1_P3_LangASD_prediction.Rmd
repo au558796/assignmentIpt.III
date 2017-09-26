@@ -18,7 +18,7 @@ ken_test = read.csv("df_test_good.csv")
 ken_test = select(ken_test, VISIT, SUBJ, Ethnicity, Diagnosis, Age, ADOS, types_CHI, tokens_CHI, CHI_MLU, verbalIQ, nonVerbalIQ, types_MOT, MOT_MLU, tokens_MOT)
 ```
 
-### Exercise 1) Testing model performance
+### Exercise 1)
 
 ```{r}
 # Compare the results on the training data () and on the test data. Report both of them. Discuss why they are different.
@@ -39,13 +39,13 @@ predictInterval(model, ken_test)#not sure how to interpret this?
 
 ```
 
-### Exercise 2) Model Selection via Cross-validation (N.B: ChildMLU!)
+### Exercise 2)
 ```{r}
-# - Create the basic model of ChildMLU as a function of Time and Diagnosis (don't forget the random effects!).
+##Create the basic model of ChildMLU as a function of Time and Diagnosis (don't forget the random effects!).
 #make a model
 model1 = lmer(CHI_MLU ~ VISIT + Diagnosis + (1+VISIT|SUBJ), ken_train, REML = F)
 
-# - Make a cross-validated version of the model. (Tips: google the function "createFolds";  loop through each fold, train a model on the other folds and test it on the fold)
+##Make a cross-validated version of the model
 
 #make folds
 folds <- cut(seq(1,nrow(ken_train)),breaks=4,labels=FALSE)
@@ -65,7 +65,7 @@ for(i in 1:4){#i is numbers 1 through 4 inclusive
     est1 = fixef(model1)[1]
     }
 
-### - Now try to find the best possible predictive model of ChildMLU, that is, the one that produces the best cross-validated results.
+##Now try to find the best possible predictive model of ChildMLU, that is, the one that produces the best cross-validated results.
  
 #alright, imma just remake the loop and trial and error the models
 folds <- cut(seq(1,nrow(ken_train)),breaks=4,labels=FALSE)
@@ -84,31 +84,34 @@ for(i in 1:4){
 print(train_error)
 print(test_error)
 
-# #model2 = lmer(CHI_MLU ~ 1 + VISIT + verbalIQ + (1+VISIT | SUBJ), ken_train, REML = F)
+#model2 = lmer(CHI_MLU ~ 1 + VISIT + verbalIQ + (1+VISIT | SUBJ), ken_train, REML = F)
 # > print(train_error)
 # [1] 0.3447835 0.3566611 0.3550076 0.3429060
 # > print(test_error)
 # [1] 0.3647887 0.3287494 0.3340756 0.3700598
 #ooooo fuck not bad eh?
-#
 
+##Bonus Question 1: How would you go comparing the performance of the basic model and the cross-validated model on the testing set?
 
-# - Bonus Question 1: How would you go comparing the performance of the basic model and the cross-validated model on the testing set?
+##Bonus Question 2: What is the effect of changing the number of folds? Can you plot RMSE as a function of number of folds?
 
-# - Bonus Question 2: What is the effect of changing the number of folds? Can you plot RMSE as a function of number of folds?
-
-# - Bonus Question 3: compare the cross-validated predictive error against the actual predictive error on the test data
+##Bonus Question 3: compare the cross-validated predictive error against the actual predictive error on the test data
 ```
-### Exercise 3) Assessing the single child
+### Exercise 3)
 
 ```{r}
-# 
-# Bernie is one of the six kids in the test dataset, so make sure to extract that child alone for the following analysis.
+##Bernie is one of the six kids in the test dataset, so make sure to extract that child alone for the following analysis.
+
 #make subset for bernie-boy
 bernie = subset(ken_test, SUBJ == 2)
-# You want to evaluate:
-# 
-# - how does the child fare in ChildMLU compared to the average TD child at each visit? Define the distance in terms of absolute difference between this Child and the average TD.
+
+##how does the child fare in ChildMLU compared to the average TD child at each visit? Define the distance in terms of absolute difference between this Child and the average TD.
+
+typical_td = data.frame(SUBJ = rep(200, 6), Diagnosis = rep('TD', 6), VISIT = seq(1, 6), verbalIQ = rep(mean(df_train$verbalIQ[df_train$Diagnosis == 'TD']), 6)) #making a typical TD child
+  #comparing Bernie to a typical TD child
+predict(model2, typical_td, allow.new.levels = T)
+bernieframe$CHI_MLU
+abs(predict(model2, typical_td, allow.new.levels = T) - bernieframe$CHI_MLU)
 
 #group for only td kids
 td_group = subset(ken_train, Diagnosis == "TD")
@@ -120,22 +123,24 @@ bern_model = lm(CHI_MLU ~ VISIT, bernie)
 summary(model3)
 summary(bern_model)
 
-# (Tip: recreate the equation of the model: Y=Intercept+BetaX1+BetaX2, etc; ***input the average of the TD group  for each parameter in the model as X1, X2, etc.).*** - WHAT DOES THIS MEAN??
-# 
-# - how does the child fare compared to the model predictions at Visit 6? Is the child below or above expectations? (tip: use the predict() function on Bernie's data only and compare the prediction with the actual performance of the child)
+##(Tip: recreate the equation of the model: Y=Intercept+BetaX1+BetaX2, etc; input the average of the TD group  for each parameter in the model as X1, X2, etc.).
+
+##how does the child fare compared to the model predictions at Visit 6? Is the child below or above expectations? (tip: use the predict() function on Bernie's data only and compare the prediction with the actual performance of the child)
 
 ```
-### OPTIONAL: Exercise 4) Model Selection via Information Criteria
-Another way to reduce the bad surprises when testing a model on new data is to pay close attention to the relative information criteria between the models you are comparing. Let's learn how to do that!
+### OPTIONAL: Exercise 4) 
 ```{r}
-# Re-create a selection of possible models explaining ChildMLU (the ones you tested for exercise 2, but now trained on the full dataset and not cross-validated).
+##Model Selection via Information Criteria, another way to reduce the bad surprises when testing a model on new data is to pay close attention to the relative information criteria between the models you are comparing. Let's learn how to do that!
+
+##Re-create a selection of possible models explaining ChildMLU (the ones you tested for exercise 2, but now trained on the full dataset and not cross-validated).
  
-# Then try to find the best possible predictive model of ChildMLU, that is, the one that produces the lowest information criterion.
+##Then try to find the best possible predictive model of ChildMLU, that is, the one that produces the lowest information criterion.
  
-# - Bonus question for the optional exercise: are information criteria correlated with cross-validated RMSE? That is, if you take AIC for Model 1, Model 2 and Model 3, do they co-vary with their cross-validated RMSE?
+##Bonus question: are information criteria correlated with cross-validated RMSE? That is, if you take AIC for Model 1, Model 2 and Model 3, do they co-vary with their cross-validated RMSE?
 ```
 
-### OPTIONAL: Exercise 5): Using Lasso for model selection
-Welcome to the last secret exercise. If you have already solved the previous exercises, and still there's not enough for you, you can expand your expertise by learning about penalizations. Check out this tutorial: http://machinelearningmastery.com/penalized-regression-in-r/ and make sure to google what penalization is, with a focus on L1 and L2-norms. Then try them on your data!
+### OPTIONAL: Exercise 5)
+```{r}
+##Welcome to the last secret exercise. If you have already solved the previous exercises, and still there's not enough for you, you can expand your expertise by learning about penalizations. Check out this tutorial: http://machinelearningmastery.com/penalized-regression-in-r/ and make sure to google what penalization is, with a focus on L1 and L2-norms. Then try them on your data!
 
 
