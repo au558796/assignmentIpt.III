@@ -12,17 +12,16 @@ setwd("C:/Users/Dana/Desktop/METHODS III/assignmentIpt.III")
 library(pacman)
 p_load(modelr, lmerTest, Metrics, lme4, merTools, ggplot2, hydroGOF, gstat, dplyr, stringr, plyr, caret)
 
-##Currupt data, so we use kenneth
+#Currupt data, so we use kenneth
 ken_train= read.csv("df_train.csv")
 ken_test = read.csv("df_test_good.csv")
 ken_test = select(ken_test, VISIT, SUBJ, Ethnicity, Diagnosis, Age, ADOS, types_CHI, tokens_CHI, CHI_MLU, verbalIQ, nonVerbalIQ, types_MOT, MOT_MLU, tokens_MOT)
 ```
 
 ### Exercise 1)
-
 ```{r}
-# Compare the results on the training data () and on the test data. Report both of them. Discuss why they are different.
-# - recreate the models you chose last time (just write the code again and apply it to Assignment2TrainData1.csv)
+##Compare the results on the training data () and on the test data. Report both of them. Discuss why they are different.
+##recreate the models you chose last time (just write the code again and apply it to Assignment2TrainData1.csv)
 
 #making the model
 model = lmer(CHI_MLU ~ 1 + VISIT + verbalIQ + (1+VISIT | SUBJ), ken_train, REML = F)
@@ -31,10 +30,10 @@ summary(model)
 #alright, how good is this model?
 modelr::rmse(model, ken_train) #0.344
 
-# - test the performance of the models on the test data 
+##test the performance of the models on the test data 
 modelr::rmse(model, ken_test)#0.349
 
-# - optional: predictions are never certain, can you identify the uncertainty of the predictions? (e.g. google predictinterval())
+##optional: predictions are never certain, can you identify the uncertainty of the predictions? (e.g. google predictinterval())
 predictInterval(model, ken_test)#not sure how to interpret this?
 
 ```
@@ -42,6 +41,7 @@ predictInterval(model, ken_test)#not sure how to interpret this?
 ### Exercise 2)
 ```{r}
 ##Create the basic model of ChildMLU as a function of Time and Diagnosis (don't forget the random effects!).
+
 #make a model
 model1 = lmer(CHI_MLU ~ VISIT + Diagnosis + (1+VISIT|SUBJ), ken_train, REML = F)
 
@@ -107,33 +107,54 @@ bernie = subset(ken_test, SUBJ == 2)
 
 ##how does the child fare in ChildMLU compared to the average TD child at each visit? Define the distance in terms of absolute difference between this Child and the average TD.
 
-typical_td = data.frame(SUBJ = rep(200, 6), Diagnosis = rep('TD', 6), VISIT = seq(1, 6), verbalIQ = rep(mean(df_train$verbalIQ[df_train$Diagnosis == 'TD']), 6)) #making a typical TD child
-  #comparing Bernie to a typical TD child
-predict(model2, typical_td, allow.new.levels = T)
-bernieframe$CHI_MLU
-abs(predict(model2, typical_td, allow.new.levels = T) - bernieframe$CHI_MLU)
+typical_td = data.frame(SUBJ = rep(200, 6), Diagnosis = rep('TD', 6), VISIT = seq(1, 6), verbalIQ = rep(mean(ken_train$verbalIQ[ken_train$Diagnosis == 'TD']), 6)) #making a typical TD child
 
 #group for only td kids
 td_group = subset(ken_train, Diagnosis == "TD")
 #model that shit
 model3 = lmer(CHI_MLU ~ VISIT + (1+VISIT|SUBJ), td_group, REML = F)
+predict(model3, typical_td, allow.new.levels = T)
+#get absolute difference
+abs(predict(model3, typical_td, allow.new.levels = T) - bernie$CHI_MLU)
+
 #here comes bernie-boy
 bern_model = lm(CHI_MLU ~ VISIT, bernie)
 #summarize output
 summary(model3)
 summary(bern_model)
+fixef(model3)[1]
+coef(bern_model)[1]
 
 ##(Tip: recreate the equation of the model: Y=Intercept+BetaX1+BetaX2, etc; input the average of the TD group  for each parameter in the model as X1, X2, etc.).
 
 ##how does the child fare compared to the model predictions at Visit 6? Is the child below or above expectations? (tip: use the predict() function on Bernie's data only and compare the prediction with the actual performance of the child)
 
 ```
+
 ### OPTIONAL: Exercise 4) 
 ```{r}
 ##Model Selection via Information Criteria, another way to reduce the bad surprises when testing a model on new data is to pay close attention to the relative information criteria between the models you are comparing. Let's learn how to do that!
 
 ##Re-create a selection of possible models explaining ChildMLU (the ones you tested for exercise 2, but now trained on the full dataset and not cross-validated).
- 
+model4 = lmer(CHI_MLU ~ 1 + VISIT + verbalIQ + (1+VISIT | SUBJ), ken_train, REML = F)
+model5 = lmer(CHI_MLU ~ 1 + VISIT + MOT_MLU + (1+VISIT | SUBJ), ken_train, REML = F)
+model6 = lmer(CHI_MLU ~ 1 + VISIT + Diagnosis + (1+VISIT | SUBJ), ken_train, REML = F)
+
+folds <- cut(seq(1,nrow(ken_train)),breaks=4,labels=FALSE)
+train_error = NULL
+test_error = NULL
+for(i in 1:4){
+    testIndexes <- which(folds==i,arr.ind=TRUE)#folds
+    testData <- ken_train[testIndexes, ]#save the testing folds in variable
+    trainData <- ken_train[-testIndexes, ]#save train folds in variable 
+    model2 = lmer(CHI_MLU ~ 1 + VISIT + verbalIQ + (1+VISIT | SUBJ), trainData, REML = F)
+    train_error[i] = modelr::rmse(model2, trainData)
+    testData$prediction <- predict(model2, testData, allow.new.levels = TRUE)
+    test_error[i] = Metrics::rmse(testData$CHI_MLU, testData$prediction)
+    
+}
+print(train_error)
+print(test_error)
 ##Then try to find the best possible predictive model of ChildMLU, that is, the one that produces the lowest information criterion.
  
 ##Bonus question: are information criteria correlated with cross-validated RMSE? That is, if you take AIC for Model 1, Model 2 and Model 3, do they co-vary with their cross-validated RMSE?
