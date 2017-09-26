@@ -140,21 +140,25 @@ model4 = lmer(CHI_MLU ~ 1 + VISIT + verbalIQ + (1+VISIT | SUBJ), ken_train, REML
 model5 = lmer(CHI_MLU ~ 1 + VISIT + MOT_MLU + (1+VISIT | SUBJ), ken_train, REML = F)
 model6 = lmer(CHI_MLU ~ 1 + VISIT + Diagnosis + (1+VISIT | SUBJ), ken_train, REML = F)
 
+models = c(model4, model5, model6)
 folds <- cut(seq(1,nrow(ken_train)),breaks=4,labels=FALSE)
 train_error = NULL
 test_error = NULL
-for(i in 1:4){
-    testIndexes <- which(folds==i,arr.ind=TRUE)#folds
-    testData <- ken_train[testIndexes, ]#save the testing folds in variable
-    trainData <- ken_train[-testIndexes, ]#save train folds in variable 
-    model2 = lmer(CHI_MLU ~ 1 + VISIT + verbalIQ + (1+VISIT | SUBJ), trainData, REML = F)
-    train_error[i] = modelr::rmse(model2, trainData)
-    testData$prediction <- predict(model2, testData, allow.new.levels = TRUE)
-    test_error[i] = Metrics::rmse(testData$CHI_MLU, testData$prediction)
-    
-}
-print(train_error)
-print(test_error)
+#loop-de-loop
+for (m in models){
+  for(i in 1:4){
+      testIndexes <- which(folds==i,arr.ind=TRUE)#folds
+      testData <- ken_train[testIndexes, ]#save the testing folds in variable
+      trainData <- ken_train[-testIndexes, ]#save train folds in variable 
+      model = m
+      train_error[i] = modelr::rmse(model, trainData)
+      testData$prediction <- predict(model, testData, allow.new.levels = TRUE)
+      test_error[i] = Metrics::rmse(testData$CHI_MLU, testData$prediction)
+      print(train_error)
+      print(test_error)  
+}}
+
+
 ##Then try to find the best possible predictive model of ChildMLU, that is, the one that produces the lowest information criterion.
  
 ##Bonus question: are information criteria correlated with cross-validated RMSE? That is, if you take AIC for Model 1, Model 2 and Model 3, do they co-vary with their cross-validated RMSE?
