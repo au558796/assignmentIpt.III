@@ -140,6 +140,11 @@ model4 = lmer(CHI_MLU ~ 1 + VISIT + verbalIQ + (1+VISIT | SUBJ), ken_train, REML
 model5 = lmer(CHI_MLU ~ 1 + VISIT + MOT_MLU + (1+VISIT | SUBJ), ken_train, REML = F)
 model6 = lmer(CHI_MLU ~ 1 + VISIT + Diagnosis + (1+VISIT | SUBJ), ken_train, REML = F)
 
+##Then try to find the best possible predictive model of ChildMLU, that is, the one that produces the lowest information criterion.
+I_have_a_big_BIC = anova(model4,model5,model6)
+#model4 woot-woot!
+
+##Bonus question: are information criteria correlated with cross-validated RMSE? That is, if you take AIC for Model 1, Model 2 and Model 3, do they co-vary with their cross-validated RMSE?
 models = c(model4, model5, model6)
 folds <- cut(seq(1,nrow(ken_train)),breaks=4,labels=FALSE)
 train_error = NULL
@@ -154,14 +159,10 @@ for (m in models){
       train_error[i] = modelr::rmse(model, trainData)
       testData$prediction <- predict(model, testData, allow.new.levels = TRUE)
       test_error[i] = Metrics::rmse(testData$CHI_MLU, testData$prediction)
+      print(m)
       print(train_error)
-      print(test_error)  
-}}
-
-
-##Then try to find the best possible predictive model of ChildMLU, that is, the one that produces the lowest information criterion.
- 
-##Bonus question: are information criteria correlated with cross-validated RMSE? That is, if you take AIC for Model 1, Model 2 and Model 3, do they co-vary with their cross-validated RMSE?
+      print(test_error)
+      }}
 ```
 
 ### OPTIONAL: Exercise 5)
