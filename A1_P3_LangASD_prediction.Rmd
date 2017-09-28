@@ -16,6 +16,7 @@ p_load(modelr, lmerTest, Metrics, lme4, merTools, ggplot2, hydroGOF, gstat, dply
 ken_train= read.csv("df_train.csv")
 ken_test = read.csv("df_test_good.csv")
 ken_test = select(ken_test, VISIT, SUBJ, Ethnicity, Diagnosis, Age, ADOS, types_CHI, tokens_CHI, CHI_MLU, verbalIQ, nonVerbalIQ, types_MOT, MOT_MLU, tokens_MOT)
+ken_test$SUBJ = ken_test$SUBJ + 100
 ```
 
 ### Exercise 1)
@@ -31,8 +32,7 @@ summary(model)
 modelr::rmse(model, ken_train) #0.344
 
 ##test the performance of the models on the test data 
-modelr::rmse(model, ken_test)#0.349
-
+Metrics::rmse(ken_test$CHI_MLU,predict(model, ken_test, allow.new.levels = TRUE))
 ##optional: predictions are never certain, can you identify the uncertainty of the predictions? (e.g. google predictinterval())
 predictInterval(model, ken_test)#not sure how to interpret this?
 
@@ -46,45 +46,35 @@ predictInterval(model, ken_test)#not sure how to interpret this?
 model1 = lmer(CHI_MLU ~ VISIT + Diagnosis + (1+VISIT|SUBJ), ken_train, REML = F)
 
 ##Make a cross-validated version of the model
+model1 = lmer(CHI_MLU ~ VISIT + Diagnosis + (1+VISIT|SUBJ), trainData, REML = F)
 
 #make folds
-folds <- cut(seq(1,nrow(ken_train)),breaks=4,labels=FALSE)
-#Perform 4 fold cross validation
+fold_function = function(train_df, test_df,model,x){
 train_error = NULL
 test_error = NULL
-for(i in 1:4){#i is numbers 1 through 4 inclusive
+n = 1
+folds <- cut(seq(1,nrow(train_df)),breaks=x,labels=FALSE)
+for(i in 1:x){#i is numbers 1 through 4 inclusive
     #Segement data by fold using the which() function 
-    testIndexes <- which(folds==i,arr.ind=TRUE)#folds
-    testData <- ken_train[testIndexes, ]#save the testing folds in variable
-    trainData <- ken_train[-testIndexes, ]#save train folds in variable 
-    model1 = lmer(CHI_MLU ~ VISIT + Diagnosis + (1+VISIT|SUBJ), trainData, REML = F)#nice model m8
-    train_error[i] = modelr::rmse(model1, trainData)#take a look at the training error (not bad, not bad)
-    testData$prediction <- predict(model1, testData, allow.new.levels = TRUE)#and now, predict!
-    test_error[i] = Metrics::rmse(testData$CHI_MLU, testData$prediction)#here we see how well the prediction model did on child mlu (not that great, *sad trumpet*)
-    #just for curiosity, you can look at estimates to see how they change
-    est1 = fixef(model1)[1]
-    }
+    testIndexes <- which(folds==n,arr.ind=TRUE)#folds
+    testData <- train_df[testIndexes, ]#save the testing folds in variable
+    trainData <- train_df[-testIndexes, ]#save train folds in variable
+    model = model
+    train_error[n] = modelr::rmse(model, trainData)#take a look at the training error (not bad, not bad)
+    testData$prediction <- predict(model, testData, allow.new.levels = TRUE)#and now, predict!
+    test_error[n] = modelr::rmse(model, testData)#here we see how well the prediction model did on child mlu (not that great, *sad trumpet*)
+    n = n+1
+    print(train_error)
+    print(test_error)
+}}
+#Perform 4 fold cross validation
+fold_function(ken_train, ken_test,model1, 4)
+
 
 ##Now try to find the best possible predictive model of ChildMLU, that is, the one that produces the best cross-validated results.
  
-#alright, imma just remake the loop and trial and error the models
-folds <- cut(seq(1,nrow(ken_train)),breaks=4,labels=FALSE)
-train_error = NULL
-test_error = NULL
-for(i in 1:4){
-    testIndexes <- which(folds==i,arr.ind=TRUE)#folds
-    testData <- ken_train[testIndexes, ]#save the testing folds in variable
-    trainData <- ken_train[-testIndexes, ]#save train folds in variable 
-    model2 = lmer(CHI_MLU ~ 1 + VISIT + verbalIQ + (1+VISIT | SUBJ), trainData, REML = F)
-    train_error[i] = modelr::rmse(model2, trainData)
-    testData$prediction <- predict(model2, testData, allow.new.levels = TRUE)
-    test_error[i] = Metrics::rmse(testData$CHI_MLU, testData$prediction)
-    
-}
-print(train_error)
-print(test_error)
-
-#model2 = lmer(CHI_MLU ~ 1 + VISIT + verbalIQ + (1+VISIT | SUBJ), ken_train, REML = F)
+model2 = lmer(CHI_MLU ~ 1 + VISIT + verbalIQ + (1+VISIT | SUBJ), ken_train, REML = F)
+fold_function(ken_train, ken_test, model2, 4)
 # > print(train_error)
 # [1] 0.3447835 0.3566611 0.3550076 0.3429060
 # > print(test_error)
@@ -93,9 +83,16 @@ print(test_error)
 
 ##Bonus Question 1: How would you go comparing the performance of the basic model and the cross-validated model on the testing set?
 
+#-> root mean squared error
+
 ##Bonus Question 2: What is the effect of changing the number of folds? Can you plot RMSE as a function of number of folds?
 
+#-> as folds go up, reliability goes down
+fold_function(ken_train, ken_test,model1,10)
+
 ##Bonus Question 3: compare the cross-validated predictive error against the actual predictive error on the test data
+Metrics::rmse(ken_test$CHI_MLU,predict(model, ken_test, allow.new.levels = TRUE))#0.67
+mean(test_error)#0.479
 ```
 ### Exercise 3)
 
