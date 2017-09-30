@@ -12,8 +12,10 @@ setwd("C:/Users/Dana/Desktop/METHODS III/assignmentIpt.III")
 library(pacman)
 p_load(modelr, lmerTest, Metrics, lme4, merTools, ggplot2, hydroGOF, gstat, dplyr, stringr, plyr, caret)
 
-#Currupt data, so we use kenneth
+#Currupt data, so we use kenneth's
 ken_train= read.csv("df_train.csv")
+ken_train$X.1 = NULL
+ken_train$X = NULL
 ken_test = read.csv("df_test_good.csv")
 ken_test = select(ken_test, VISIT, SUBJ, Ethnicity, Diagnosis, Age, ADOS, types_CHI, tokens_CHI, CHI_MLU, verbalIQ, nonVerbalIQ, types_MOT, MOT_MLU, tokens_MOT)
 ken_test$SUBJ = ken_test$SUBJ + 100
@@ -21,20 +23,25 @@ ken_test$SUBJ = ken_test$SUBJ + 100
 
 ### Exercise 1)
 ```{r}
-##Compare the results on the training data () and on the test data. Report both of them. Discuss why they are different.
-##recreate the models you chose last time (just write the code again and apply it to Assignment2TrainData1.csv)
+##Compare the results on the training data () and on the test data. Report both of them. Discuss why they are different. Recreate the models you chose last time (just write the code again and apply it to Assignment2TrainData1.csv)
 
-#making the model
+#vogue
 model = lmer(CHI_MLU ~ 1 + VISIT + verbalIQ + (1+VISIT | SUBJ), ken_train, REML = F)
-#let's see the results
-summary(model)
-#alright, how good is this model?
-modelr::rmse(model, ken_train) #0.344
 
-##test the performance of the models on the test data 
+#train error
+modelr::rmse(model, ken_train)
+#predictive error
 Metrics::rmse(ken_test$CHI_MLU,predict(model, ken_test, allow.new.levels = TRUE))
+
 ##optional: predictions are never certain, can you identify the uncertainty of the predictions? (e.g. google predictinterval())
-predictInterval(model, ken_test)#not sure how to interpret this?
+PI<-predictInterval(model, newdata = ken_test, 
+                        level = 0.95, n.sims = 1000,
+                        stat = "median", type="linear.prediction",
+                        include.resid.var = TRUE)#not sure how to interpret
+ggplot(aes(x=1:30, y=fit, ymin=lwr, ymax=upr), data=PI[1:30,]) +
+  geom_point() + 
+  geom_linerange() +
+  labs(x="Index", y="Prediction w/ 95% PI") + theme_bw()
 
 ```
 
@@ -42,57 +49,71 @@ predictInterval(model, ken_test)#not sure how to interpret this?
 ```{r}
 ##Create the basic model of ChildMLU as a function of Time and Diagnosis (don't forget the random effects!).
 
-#make a model
+#vogue
 model1 = lmer(CHI_MLU ~ VISIT + Diagnosis + (1+VISIT|SUBJ), ken_train, REML = F)
 
-##Make a cross-validated version of the model
-model1 = lmer(CHI_MLU ~ VISIT + Diagnosis + (1+VISIT|SUBJ), trainData, REML = F)
-
-#make folds
+#make function for general cross validation
 fold_function = function(train_df, test_df,model,x){
 train_error = NULL
 test_error = NULL
 n = 1
 folds <- cut(seq(1,nrow(train_df)),breaks=x,labels=FALSE)
-for(i in 1:x){#i is numbers 1 through 4 inclusive
-    #Segement data by fold using the which() function 
-    testIndexes <- which(folds==n,arr.ind=TRUE)#folds
-    testData <- train_df[testIndexes, ]#save the testing folds in variable
-    trainData <- train_df[-testIndexes, ]#save train folds in variable
+for(i in 1:x){
+    testIndexes <- which(folds==n,arr.ind=TRUE)
+    testData <- train_df[testIndexes, ]
+    trainData <- train_df[-testIndexes, ]
     model = model
-    train_error[n] = modelr::rmse(model, trainData)#take a look at the training error (not bad, not bad)
-    testData$prediction <- predict(model, testData, allow.new.levels = TRUE)#and now, predict!
-    test_error[n] = modelr::rmse(model, testData)#here we see how well the prediction model did on child mlu (not that great, *sad trumpet*)
+    train_error[n] = modelr::rmse(model, trainData)
+    testData$prediction <- predict(model, testData, allow.new.levels = TRUE)
+    test_error[n] = modelr::rmse(model, testData)
     n = n+1
-    print(train_error)
-    print(test_error)
-}}
+    result = c("folds"=n, "train error"= train_error, "test error"= test_error)
+}
+    return(result)
+}
+
 #Perform 4 fold cross validation
 fold_function(ken_train, ken_test,model1, 4)
 
-
 ##Now try to find the best possible predictive model of ChildMLU, that is, the one that produces the best cross-validated results.
- 
 model2 = lmer(CHI_MLU ~ 1 + VISIT + verbalIQ + (1+VISIT | SUBJ), ken_train, REML = F)
-fold_function(ken_train, ken_test, model2, 4)
-# > print(train_error)
-# [1] 0.3447835 0.3566611 0.3550076 0.3429060
-# > print(test_error)
-# [1] 0.3647887 0.3287494 0.3340756 0.3700598
-#ooooo fuck not bad eh?
+model3 = lmer(CHI_MLU ~ 1 + VISIT + ADOS + (1+VISIT | SUBJ), ken_train, REML = F)
+model4 = lmer(CHI_MLU ~ 1 + VISIT + tokens_CHI*types_CHI + (1+VISIT | SUBJ), ken_train, REML = F)
+model5 = lmer(CHI_MLU ~ 1 + VISIT + MOT_MLU + (1+VISIT | SUBJ), ken_train, REML = F)
+model6 = lmer(CHI_MLU ~ 1 + VISIT + Diagnosis + (1+VISIT | SUBJ), ken_train, REML = F)
+models = c(model2, model3, model4, model5, model6)
+
+#make a function to loop over models and folds
+cv_models = function(train_df, test_df,model,x){
+train_error = NULL
+test_error = NULL
+folds <- cut(seq(1,nrow(train_df)),breaks=x,labels=FALSE)
+for (m in models){
+  for(i in 1:x){
+      model = m
+      testIndexes <- which(folds==i,arr.ind=TRUE)
+      testData <- ken_train[testIndexes, ]
+      trainData <- ken_train[-testIndexes, ]
+      train_error[i] = modelr::rmse(model, trainData)
+      testData$prediction <- predict(model, testData, allow.new.levels = TRUE)
+      test_error[i] = Metrics::rmse(testData$CHI_MLU, testData$prediction)
+      result = c("model"=m, "train error"= train_error, "test error"= test_error)
+  }}
+      return(result)  
+}
+
+cv_models(ken_train, ken_test, models, 4)
 
 ##Bonus Question 1: How would you go comparing the performance of the basic model and the cross-validated model on the testing set?
-
-#-> root mean squared error
+predict_error = Metrics::rmse(ken_test$CHI_MLU,predict(model, ken_test, allow.new.levels = TRUE))
+real_error = mean(test_error)
 
 ##Bonus Question 2: What is the effect of changing the number of folds? Can you plot RMSE as a function of number of folds?
-
-#-> as folds go up, reliability goes down
-fold_function(ken_train, ken_test,model1,10)
+plot_data = as.data.frame(fold_function(ken_train, ken_test,model1,10))
 
 ##Bonus Question 3: compare the cross-validated predictive error against the actual predictive error on the test data
-Metrics::rmse(ken_test$CHI_MLU,predict(model, ken_test, allow.new.levels = TRUE))#0.67
-mean(test_error)#0.479
+predict_error = Metrics::rmse(ken_test$CHI_MLU,predict(model, ken_test, allow.new.levels = TRUE))
+real_error = mean(test_error)
 ```
 ### Exercise 3)
 
@@ -100,70 +121,73 @@ mean(test_error)#0.479
 ##Bernie is one of the six kids in the test dataset, so make sure to extract that child alone for the following analysis.
 
 #make subset for bernie-boy
-bernie = subset(ken_test, SUBJ == 2)
+bernie = subset(ken_test, SUBJ == 102)
+bernie = select(bernie, SUBJ, VISIT, Diagnosis, CHI_MLU, verbalIQ)
 
-##how does the child fare in ChildMLU compared to the average TD child at each visit? Define the distance in terms of absolute difference between this Child and the average TD.
+##How does the child fare in ChildMLU compared to the average TD child at each visit? Define the distance in terms of absolute difference between this Child and the average TD. Tip: recreate the equation of the model: Y=Intercept+BetaX1+BetaX2, etc; input the average of the TD group  for each parameter in the model as X1, X2, etc.).
 
-typical_td = data.frame(SUBJ = rep(200, 6), Diagnosis = rep('TD', 6), VISIT = seq(1, 6), verbalIQ = rep(mean(ken_train$verbalIQ[ken_train$Diagnosis == 'TD']), 6)) #making a typical TD child
+#making a typical TD child
+typical_td = data.frame(SUBJ = rep(200, 6), Diagnosis = rep('TD', 6), VISIT = seq(1, 6), verbalIQ = rep(mean(ken_train$verbalIQ[ken_train$Diagnosis == 'TD']), 6)) 
 
 #group for only td kids
 td_group = subset(ken_train, Diagnosis == "TD")
-#model that shit
+td_group = select(td_group, SUBJ, VISIT, Diagnosis, CHI_MLU, verbalIQ)
+
+#vogue
 model3 = lmer(CHI_MLU ~ VISIT + (1+VISIT|SUBJ), td_group, REML = F)
-predict(model3, typical_td, allow.new.levels = T)
+typical_td$CHI_MLU<-predict(model3, typical_td, allow.new.levels = T)
+
 #get absolute difference
 abs(predict(model3, typical_td, allow.new.levels = T) - bernie$CHI_MLU)
 
-#here comes bernie-boy
-bern_model = lm(CHI_MLU ~ VISIT, bernie)
-#summarize output
-summary(model3)
-summary(bern_model)
-fixef(model3)[1]
-coef(bern_model)[1]
-
-##(Tip: recreate the equation of the model: Y=Intercept+BetaX1+BetaX2, etc; input the average of the TD group  for each parameter in the model as X1, X2, etc.).
-
 ##how does the child fare compared to the model predictions at Visit 6? Is the child below or above expectations? (tip: use the predict() function on Bernie's data only and compare the prediction with the actual performance of the child)
 
+td_group$avg_mlu = by(td_group$CHI_MLU,td_group$VISIT, FUN = mean )
+td_group$SUBJ = "1"
+bernie$avg_mlu = bernie$CHI_MLU
+typical_td$avg_mlu = typical_td$CHI_MLU
+plot2_data = merge(typical_td, bernie, all = TRUE)
+plot2_data = merge(plot2_data, td_group, all = TRUE)
+
+plot2_data$avg_mlu = as.numeric(plot2_data$avg_mlu)
+plot2_data$VISIT = as.factor(plot2_data$VISIT)
+
+ggplot(plot2_data, aes(plot2_data$VISIT, plot2_data$avg_mlu, fill = plot2_data$SUBJ) + geom_line())
 ```
 
 ### OPTIONAL: Exercise 4) 
 ```{r}
-##Model Selection via Information Criteria, another way to reduce the bad surprises when testing a model on new data is to pay close attention to the relative information criteria between the models you are comparing. Let's learn how to do that!
-
-##Re-create a selection of possible models explaining ChildMLU (the ones you tested for exercise 2, but now trained on the full dataset and not cross-validated).
-model4 = lmer(CHI_MLU ~ 1 + VISIT + verbalIQ + (1+VISIT | SUBJ), ken_train, REML = F)
-model5 = lmer(CHI_MLU ~ 1 + VISIT + MOT_MLU + (1+VISIT | SUBJ), ken_train, REML = F)
-model6 = lmer(CHI_MLU ~ 1 + VISIT + Diagnosis + (1+VISIT | SUBJ), ken_train, REML = F)
-
-##Then try to find the best possible predictive model of ChildMLU, that is, the one that produces the lowest information criterion.
-I_have_a_big_BIC = anova(model4,model5,model6)
-#model4 woot-woot!
+##Re-create a selection of possible models explaining ChildMLU (the ones you tested for exercise 2, but now trained on the full dataset and not cross-validated). Then try to find the best possible predictive model of ChildMLU, that is, the one that produces the lowest information criterion.
+I_have_a_big_BIC = anova(model2, model3, model4, model5, model6)
+summary(I_have_a_big_BIC)
 
 ##Bonus question: are information criteria correlated with cross-validated RMSE? That is, if you take AIC for Model 1, Model 2 and Model 3, do they co-vary with their cross-validated RMSE?
-models = c(model4, model5, model6)
+
+models = c(model2, model3, model4, model5, model6)
 folds <- cut(seq(1,nrow(ken_train)),breaks=4,labels=FALSE)
 train_error = NULL
 test_error = NULL
-#loop-de-loop
+loop_de_loop = function(x){
 for (m in models){
   for(i in 1:4){
-      testIndexes <- which(folds==i,arr.ind=TRUE)#folds
-      testData <- ken_train[testIndexes, ]#save the testing folds in variable
-      trainData <- ken_train[-testIndexes, ]#save train folds in variable 
+      testIndexes <- which(folds==i,arr.ind=TRUE)
+      testData <- ken_train[testIndexes, ]
+      trainData <- ken_train[-testIndexes, ]
       model = m
       train_error[i] = modelr::rmse(model, trainData)
       testData$prediction <- predict(model, testData, allow.new.levels = TRUE)
       test_error[i] = Metrics::rmse(testData$CHI_MLU, testData$prediction)
-      print(m)
-      print(train_error)
-      print(test_error)
-      }}
+      result = c("model"=m, "train error"=train_error, "test error"= test_error)
+  }}
+     return(result)
+}
+
+x = "x"
+loop_de_loop(x)
 ```
 
 ### OPTIONAL: Exercise 5)
 ```{r}
 ##Welcome to the last secret exercise. If you have already solved the previous exercises, and still there's not enough for you, you can expand your expertise by learning about penalizations. Check out this tutorial: http://machinelearningmastery.com/penalized-regression-in-r/ and make sure to google what penalization is, with a focus on L1 and L2-norms. Then try them on your data!
-
+```
 
