@@ -4,6 +4,9 @@ author: "Dana Jensen"
 date: "August 10, 2017"
 output: html_document
 ---
+---
+                          "COMPLETE"
+---
 ```{r}
 #prelude
 setwd("C:/Users/Dana/Desktop/METHODS III/assignmentIpt.III")
@@ -27,15 +30,16 @@ ken_test$CHI_MLU = as.numeric(ken_test$CHI_MLU)
 model = lmer(CHI_MLU ~ 1 + VISIT + verbalIQ + (1+VISIT | SUBJ), ken_train, REML = F)
 
 #train error
-modelr::rmse(model, ken_train)
+modelr::rmse(model, ken_train) #0.35
 #predictive error
-Metrics::rmse(ken_test$CHI_MLU,predict(model, ken_test, allow.new.levels = TRUE))
+Metrics::rmse(ken_test$CHI_MLU,predict(model, ken_test, allow.new.levels = TRUE))#0.67
 
   ##optional: predictions are never certain, can you identify the uncertainty   of the predictions? (e.g. google predictinterval())
 PI<-predictInterval(model, newdata = ken_test, 
                         level = 0.95, n.sims = 1000,
                         stat = "median", type="linear.prediction",
-                        include.resid.var = TRUE)#not sure how to interpret
+                        include.resid.var = TRUE)#not sure how to 
+#   WHAT DOES THIS PLOT MEAN?
 ggplot(aes(x=1:30, y=fit, ymin=lwr, ymax=upr), data=PI[1:30,]) +
   geom_point() + 
   geom_linerange() +
@@ -44,32 +48,38 @@ ggplot(aes(x=1:30, y=fit, ymin=lwr, ymax=upr), data=PI[1:30,]) +
 ```
 ### Exercise 2)
 ```{r}
-  ##Create the basic model of ChildMLU as a function of Time and Diagnosis      (don't forget the random effects!).
+  ##Create the basic model of ChildMLU as a function of Time and Diagnosis (don't forget the random effects!).
 
-#vogue
-model1 = lmer(CHI_MLU ~ VISIT + Diagnosis + (1+VISIT|SUBJ), ken_train, REML = F)
+#define model as a string before running this function to append model to dataframe
+model1 = "CHI_MLU ~ VISIT + Diagnosis + (1+VISIT|SUBJ)"
+train_error = NULL
+test_error = NULL
+testIndexes = NULL
+testData = NULL
+trainData = NULL
+folds <- createFolds(ken_train, k = 4, list = TRUE, returnTrain = TRUE)
+n = 1
 
-#make function for general cross validation
-fold_function = function(train_df, test_df,model,x){
-  train_error = NULL
-  test_error = NULL
-  folds <- cut(seq(1,nrow(train_df)),breaks=x,labels=FALSE)
-  for(i in 1:x){
-    testIndexes <- which(i %in% train_df$SUBJ,arr.ind=TRUE)
-    testData <- train_df[testIndexes, ]
-    trainData <- train_df[-testIndexes, ]
-    model = model
-    train_error[n] = modelr::rmse(model, trainData)
-    testData$prediction <- predict(model, testData, allow.new.levels = TRUE)
-    test_error[n] = modelr::rmse(model, testData)
-    result = data.frame(model, i, train_error, test_error)
-}}
-    
 #Perform 4 fold cross validation
-#~~~~~~~~ERROR: no applicable method for 'predict' applied to an object of class "character"~~~~~~~~~~
-fold_function(ken_train, ken_test,model1, 4)
+for(i in folds){
+  testIndexes <- which(i %in% ken_train$SUBJ,arr.ind=TRUE)
+  testData <- ken_train[testIndexes, ]
+  trainData <- ken_train[-testIndexes, ]
+  Model = lmer(model1, ken_train, REML = FALSE)
+  model = model1
+  train_error = modelr::rmse(Model, trainData)
+  testData$prediction <- predict(Model, testData, allow.new.levels = TRUE)
+  test_error = modelr::rmse(Model, testData)
+  result = data.frame(model, n, train_error, test_error)
+  if (n == 1){
+    result_df = result
+  }else{
+    result_df = rbind(result_df, result)
+  }
+  n = n+1
+}
 
-  ##Now try to find the best possible predictive model of ChildMLU, that is,    the one that produces the best cross-validated results.
+  ##Now try to find the best possible predictive model of ChildMLU, that is, the one that produces the best cross-validated results.
 
 # NOTE TO SELF:rmse = average error,  smaller the better
 model0 = "CHI_MLU ~ 1 + VISIT + verbalIQ + (1+VISIT | SUBJ)"
@@ -78,32 +88,43 @@ model2 = "CHI_MLU ~ 1 + VISIT + ADOS + (1+VISIT | SUBJ)"
 model3 = "CHI_MLU ~ 1 + VISIT + tokens_CHI*types_CHI + (1+VISIT | SUBJ)"
 model4 = "CHI_MLU ~ 1 + VISIT + MOT_MLU + (1+VISIT | SUBJ)"
 models = c(model0, model1, model2, model3, model4)
+
+rm(result2, result_df2)
 train_error = NULL
 test_error = NULL
-folds <- cut(seq(1,nrow(ken_train)), breaks=4,labels=FALSE)
+testIndexes = NULL
+testData = NULL
+trainData = NULL
+folds <- createFolds(ken_train, k = 4, list = TRUE, returnTrain = TRUE)
+n = 1
+
 for (m in models){
-  for(i in 1:4){
-      model = lmer(m,ken_train,REML = FALSE)
-      testIndexes <- which(i %in% ken_train$SUBJ,arr.ind=TRUE)
-      testData <- ken_train[testIndexes, ]
-      trainData <- ken_train[-testIndexes, ]
-      train_error[i] = modelr::rmse(model, trainData)
-      testData$prediction <- predict(model, testData, allow.new.levels = TRUE)
-      test_error[i] = Metrics::rmse(testData$CHI_MLU, testData$prediction)
-      temp = data.frame(m, i, train_error, test_error)
-            if (m == models[1]){ 
-        result_df = temp}
-            else{
-        result_df = rbind(result_df, temp)}
+  for(i in folds){
+    testIndexes <- which(i %in% ken_train$SUBJ,arr.ind=TRUE)
+    testData <- ken_train[testIndexes, ]
+    trainData <- ken_train[-testIndexes, ]
+    Model = lmer(m, ken_train, REML = FALSE)
+    model = m
+    train_error = modelr::rmse(Model, trainData)
+    testData$prediction <- predict(Model, testData, allow.new.levels = TRUE)
+    test_error = modelr::rmse(Model, testData)
+    result2 = data.frame(model, n, train_error, test_error)
+    if (n == 1){
+      result_df2 = result2
+    }else{
+      result_df2 = rbind(result_df2, result2)
+    }
+    n = n+1
   }}
 
-result_df<- group_by(result_df, m)
-new<-dplyr::summarise(result_df, mean(test_error))
-new2<-dplyr::summarise(result_df, mean(train_error))
-result_df<- merge(new,new2, all.new.levels = TRUE)
-#from the result_df data frame we can see that model2 has the lowest test and train rmse
+ImSlowlyDying<- dplyr::summarise(group_by(result_df2, model), train_error = mean(train_error))
 
-  ##Bonus Question 1: How would you go comparing the performance of the basic   model and the cross-validated model on the testing set?
+HelpMe<- dplyr::summarise(group_by(result_df2, model), test_error = mean(test_error))
+
+df<-merge(ImSlowlyDying, HelpMe, allow.new.levels = TRUE)
+#from "df" we can see that model4 has the lowest test (and train) rmse
+
+"  ##Bonus Question 1: How would you go comparing the performance of the basic   model and the cross-validated model on the testing set?
 modelr::rmse(model, ken_train)
 Metrics::rmse(ken_test$CHI_MLU,predict(model, ken_test, allow.new.levels = TRUE))
 error<-as.numeric(result_df$`mean(test_error)`)
@@ -111,7 +132,7 @@ mean(error)
 
   ##Bonus Question 2: What is the effect of changing the number of folds? Can   you plot RMSE as a function of number of folds?
 
-#~~~~ERROR~~~~#<-----Invalid grouping factor specification, SUBJ
+#~~~~ERROR~~~~
 ken_train$CHI_MLU<- as.numeric(ken_train$CHI_MLU)
 train_error = NULL
 test_error = NULL
@@ -134,7 +155,7 @@ for(i in folds){
 
 legit<-modelr::rmse(model, ken_train)
 fugazzi<-Metrics::rmse(ken_test$CHI_MLU,predict(model, ken_test, allow.new.levels = TRUE))
-abs(legit - fugazzi)
+abs(legit - fugazzi)"
 ```
 ### Exercise 3)
 ```{r}
@@ -149,7 +170,7 @@ bernie$SUBJ = "Bernie-Boy"
 typical_td = data.frame(SUBJ = rep("Predicted", 6), VISIT = seq(1, 6))
 
 #predict a typically developing child's mlu
-model3 = lmer(CHI_MLU ~ VISIT + (1+VISIT|SUBJ), data, REML = F)
+model3 = lmer(CHI_MLU ~ VISIT + (1+VISIT|SUBJ), ken_train, REML = F)
 typical_td$CHI_MLU<-predict(model3, typical_td, allow.new.levels = T)
 
 #get absolute difference between bernie and prediction
@@ -191,7 +212,7 @@ ggplot(plot2_data, aes(x = VISIT, y = CHI_MLU, fill = SUBJ))+
 ```
 ### OPTIONAL: Exercise 4) 
 ```{r}
-  ##Re-create a selection of possible models explaining ChildMLU (the ones you   tested for exercise 2, but now trained on the full dataset and not            cross-validated). Then try to find the best possible predictive model of      ChildMLU, that is, the one that produces the lowest information criterion.
+ " ##Re-create a selection of possible models explaining ChildMLU (the ones you   tested for exercise 2, but now trained on the full dataset and not            cross-validated). Then try to find the best possible predictive model of      ChildMLU, that is, the one that produces the lowest information criterion.
 nullModel = lmer(CHI_MLU ~ 1 + (1+VISIT | SUBJ), ken_train, REML = FALSE)
 model = lmer(CHI_MLU ~ 1 + VISIT + verbalIQ + (1+VISIT | SUBJ), ken_train, REML = FALSE)
 model1 = lmer(CHI_MLU ~ 1 + VISIT + Diagnosis + (1+VISIT | SUBJ), ken_train, REML = FALSE)
@@ -244,5 +265,5 @@ vogue<-ggplot(result_df3, aes(`mean(test_error)`, AIC, color = m))+
   geom_point()+
   geom_smooth(method = 'lm')
 
-vogue
+vogue"
 ```
