@@ -11,7 +11,7 @@ output: html_document
 #prelude
 setwd("C:/Users/Dana/Desktop/METHODS III/assignmentIpt.III")
 library(pacman)
-p_load(modelr, lmerTest, Metrics, lme4, merTools, ggplot2, hydroGOF, gstat, dplyr, stringr, plyr, data.table, sim, Rmisc, caret)
+p_load(modelr, lmerTest, Metrics, lme4, merTools, ggplot2,  dplyr, stringr, plyr, data.table, sim, Rmisc, caret, MuMIn)
 
 #Currupt data, so we use kenneth's
 ken_train= read.csv("df_train.csv")
@@ -27,12 +27,12 @@ ken_test$CHI_MLU = as.numeric(ken_test$CHI_MLU)
   ##Compare the results on the training data () and on the test data. Report    both of them. Discuss why they are different. 
 
 #vogue
-model = lmer(CHI_MLU ~ 1 + VISIT + verbalIQ + (1+VISIT | SUBJ), ken_train, REML = F)
+model = lmer(CHI_MLU ~ 1 + VISIT + verbalIQ + MOT_MLU + (1+VISIT | SUBJ), ken_train, REML = F)
 
 #train error
-modelr::rmse(model, ken_train) #0.35
+modelr::rmse(model, ken_train) #0.33
 #predictive error
-Metrics::rmse(ken_test$CHI_MLU,predict(model, ken_test, allow.new.levels = TRUE))#0.67
+Metrics::rmse(ken_test$CHI_MLU,predict(model, ken_test, allow.new.levels = TRUE))#0.53
 
   ##optional: predictions are never certain, can you identify the uncertainty   of the predictions? (e.g. google predictinterval())
 PI<-predictInterval(model, newdata = ken_test, 
@@ -50,6 +50,9 @@ ggplot(aes(x=1:30, y=fit, ymin=lwr, ymax=upr), data=PI[1:30,]) +
 ```{r}
   ##Create the basic model of ChildMLU as a function of Time and Diagnosis (don't forget the random effects!).
 
+model1<- lmer(CHI_MLU ~ VISIT + Diagnosis + (1+VISIT|SUBJ), data = ken_train, REML = FALSE)
+summary(model1)
+r.squaredGLMM(model1)
 #define model as a string before running this function to append model to dataframe
 model1 = "CHI_MLU ~ VISIT + Diagnosis + (1+VISIT|SUBJ)"
 train_error = NULL
@@ -79,15 +82,16 @@ for(i in folds){
   n = n+1
 }
 
+mean(result_df$test_error)
   ##Now try to find the best possible predictive model of ChildMLU, that is, the one that produces the best cross-validated results.
 
 # NOTE TO SELF:rmse = average error,  smaller the better
-model0 = "CHI_MLU ~ 1 + VISIT + verbalIQ + (1+VISIT | SUBJ)"
-model1 = "CHI_MLU ~ 1 + VISIT + Diagnosis + (1+VISIT | SUBJ)"
-model2 = "CHI_MLU ~ 1 + VISIT + ADOS + (1+VISIT | SUBJ)"
-model3 = "CHI_MLU ~ 1 + VISIT + tokens_CHI*types_CHI + (1+VISIT | SUBJ)"
-model4 = "CHI_MLU ~ 1 + VISIT + MOT_MLU + (1+VISIT | SUBJ)"
-models = c(model0, model1, model2, model3, model4)
+nullModel1="CHI_MLU~1+(1|VISIT)"
+m1 = "CHI_MLU ~ VISIT + verbalIQ + (1+VISIT|SUBJ)"
+m2 = "CHI_MLU ~ VISIT + verbalIQ + nonVerbalIQ +(1+VISIT|SUBJ)"
+m3 = "CHI_MLU ~ VISIT + verbalIQ + MOT_MLU + (1+VISIT|SUBJ)"
+m4 = "CHI_MLU ~ VISIT + nonVerbalIQ + MOT_MLU + (1+VISIT|SUBJ)"
+models = c(nullModel1, m1, m2, m3, m4)
 
 rm(result2, result_df2)
 train_error = NULL
@@ -124,6 +128,10 @@ HelpMe<- dplyr::summarise(group_by(result_df2, model), test_error = mean(test_er
 df<-merge(ImSlowlyDying, HelpMe, allow.new.levels = TRUE)
 #from "df" we can see that model4 has the lowest test (and train) rmse
 
+model3<-lmer(CHI_MLU ~ VISIT + verbalIQ + MOT_MLU + (1+VISIT|SUBJ), data = ken_train, REML = FALSE)
+model4<-lmer(CHI_MLU ~ VISIT + nonVerbalIQ + MOT_MLU + (1+VISIT|SUBJ), data = ken_train, REML = FALSE)
+r.squaredGLMM(model3)
+r.squaredGLMM(model4)
 "  ##Bonus Question 1: How would you go comparing the performance of the basic   model and the cross-validated model on the testing set?
 modelr::rmse(model, ken_train)
 Metrics::rmse(ken_test$CHI_MLU,predict(model, ken_test, allow.new.levels = TRUE))
@@ -177,6 +185,9 @@ typical_td$CHI_MLU<-predict(model3, typical_td, allow.new.levels = T)
 group1<-group_by(typical_td, VISIT)
 group2<-group_by(bernie, VISIT)
 abs(group1$CHI_MLU - group2$CHI_MLU)
+#bernie and average td
+abs(temp$CHI_MLU - group2$CHI_MLU)
+
 
 #group of only td kids
 td_group = subset(ken_train, SUBJ = "TD")
