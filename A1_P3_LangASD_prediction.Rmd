@@ -169,28 +169,27 @@ abs(legit - fugazzi)"
 ```{r}
   ##Bernie is one of the six kids in the test dataset, so make sure to extract   that child alone for the following analysis.
 
+model3 = lmer(CHI_MLU ~ VISIT + Diagnosis + (1+VISIT|SUBJ), ken_train, REML = F)
+
 #make subset for bernie
 bernie = subset(ken_test, SUBJ == 102)
-bernie = dplyr::select(bernie, SUBJ, VISIT, CHI_MLU)
+bernie = dplyr::select(bernie, SUBJ, VISIT, Diagnosis, CHI_MLU)
 bernie$SUBJ = "Bernie-Boy"
 
 #making a "typical" TD child
-typical_td = data.frame(SUBJ = rep("Predicted", 6), VISIT = seq(1, 6))
+typical_td = data.frame(SUBJ = rep("Predicted_TD", 6), VISIT = seq(1, 6), Diagnosis = "TD")
 
 #predict a typically developing child's mlu
-model3 = lmer(CHI_MLU ~ VISIT + (1+VISIT|SUBJ), ken_train, REML = F)
 typical_td$CHI_MLU<-predict(model3, typical_td, allow.new.levels = T)
 
-#get absolute difference between bernie and prediction
-group1<-group_by(typical_td, VISIT)
-group2<-group_by(bernie, VISIT)
-abs(group1$CHI_MLU - group2$CHI_MLU)
-#bernie and average td
-abs(temp$CHI_MLU - group2$CHI_MLU)
+#making a "typical" ASD child
+typical_asd = data.frame(SUBJ = rep("Predicted_ASD", 6), VISIT = seq(1, 6), Diagnosis = "ASD")
 
+#predict typical ASD
+typical_asd$CHI_MLU<-predict(model3, typical_asd, allow.new.levels = T)
 
 #group of only td kids
-td_group = subset(ken_train, SUBJ = "TD")
+td_group = subset(ken_train, Diagnosis == "TD")
 td_group = dplyr::select(td_group, SUBJ, VISIT, CHI_MLU)
 
 # real average of TD children 
@@ -203,7 +202,23 @@ mean(td_group$CHI_MLU[td_group$VISIT=="5"]),
 mean(td_group$CHI_MLU[td_group$VISIT=="6"])
 )
 visit = (seq(1:6))
-temp = data.frame(SUBJ="Average TD",VISIT = visit, CHI_MLU = mlu)
+average_td = data.frame(SUBJ="Average TD",VISIT = visit, Diagnosis = "TD",CHI_MLU = mlu)
+
+#group of only td kids
+asd_group = subset(ken_train, Diagnosis == "ASD")
+asd_group = dplyr::select(asd_group, SUBJ, VISIT, Diagnosis, CHI_MLU)
+
+# real average of TD children 
+mlu = c(
+mean(asd_group$CHI_MLU[asd_group$VISIT=="1"]),
+mean(asd_group$CHI_MLU[asd_group$VISIT=="2"]),
+mean(asd_group$CHI_MLU[asd_group$VISIT=="3"]),
+mean(asd_group$CHI_MLU[asd_group$VISIT=="4"]),
+mean(asd_group$CHI_MLU[asd_group$VISIT=="5"]),
+mean(asd_group$CHI_MLU[asd_group$VISIT=="6"])
+)
+visit = (seq(1:6))
+average_asd = data.frame(SUBJ="Average ASD",VISIT = visit, Diagnosis = "ASD",CHI_MLU = mlu)
 
 ##NOTE TO SELF:
   ## td_group = all TD children
@@ -211,13 +226,26 @@ temp = data.frame(SUBJ="Average TD",VISIT = visit, CHI_MLU = mlu)
   ## bernie = only bernie's data
   ## temp = actual average per visit 
 
+##Absolute (vodka) difference
+#bernie and ASD prediction
+round(abs(typical_asd$CHI_MLU - bernie$CHI_MLU), 2)
+#bernie and TD prediction
+round(abs(typical_td$CHI_MLU - bernie$CHI_MLU), 2)
+#bernie and average td
+round(abs(average_td$CHI_MLU - bernie$CHI_MLU), 2)
+#bernie and average asd
+round(abs(average_asd$CHI_MLU - bernie$CHI_MLU), 2)
+
 #all in one dataframe
-plot2_data = merge(temp, bernie, all = TRUE)
+plot2_data = merge(bernie, average_td, all = TRUE)
+plot2_data = merge(plot2_data, average_asd, all = TRUE)
 plot2_data = merge(plot2_data, typical_td,  all = TRUE)
+plot2_data = merge(plot2_data, typical_asd,  all = TRUE)
+
 
 #error bars dont work
-ggplot(plot2_data, aes(x = VISIT, y = CHI_MLU, fill = SUBJ))+
-  geom_bar(stat="identity", position = "dodge")+
+damn_fine_plot<-ggplot(plot2_data, aes(x = VISIT, y = CHI_MLU, fill = SUBJ))+
+  geom_bar(aes(reorder(CHI_MLU, VISIT)),stat="identity", position = "dodge")+
   stat_summary(fun.data=mean_cl_normal,geom="errorbar", position=position_dodge(width=0.80), width=0.2)
 
 ```
