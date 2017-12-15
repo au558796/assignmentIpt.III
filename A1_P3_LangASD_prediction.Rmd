@@ -8,7 +8,7 @@ output: html_document
                           "COMPLETE"
 ---
 ```{r}
-#prelude
+#preamble
 setwd("C:/Users/Dana/Desktop/METHODS III/assignmentIpt.III")
 library(pacman)
 p_load(modelr, lmerTest, Metrics, lme4, merTools, ggplot2,  dplyr, stringr, plyr, data.table, sim, Rmisc, caret, MuMIn)
