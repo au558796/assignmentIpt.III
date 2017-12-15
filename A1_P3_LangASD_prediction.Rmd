@@ -24,7 +24,7 @@ ken_test$CHI_MLU = as.numeric(ken_test$CHI_MLU)
 ```
 ### Exercise 1)
 ```{r}
-  ##Compare the results on the training data () and on the test data. Report    both of them. Discuss why they are different. 
+##Compare the results on the training data () and on the test data. Report    both of them. Discuss why they are different. 
 
 #vogue
 model = lmer(CHI_MLU ~ 1 + VISIT + verbalIQ + MOT_MLU + (1+VISIT | SUBJ), ken_train, REML = F)
